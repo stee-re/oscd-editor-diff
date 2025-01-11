@@ -92,7 +92,7 @@ export class DiffTree extends LitElement {
 
   @query('md-icon-button') expandButton!: HTMLElement;
 
-  @property({ type: Boolean })
+  @property({ type: Boolean, reflect: true })
   expanded = false;
 
   get ourHasher(): ReturnType<typeof newHasher> | undefined {
@@ -219,16 +219,25 @@ export class DiffTree extends LitElement {
     const id = (<string>(identity(element) || element.tagName))
       .split('>')
       .pop();
-    const zIndex = 10000 - this.depth;
-    let style = `top: ${this.depth * 24}px; z-index: ${zIndex};`;
-    if (!this.ours) style += 'color: var(--oscd-primary);';
-    if (!this.theirs) style += 'color: var(--oscd-error);';
+    let color = 'inherit';
+    if (!this.ours) color = 'var(--oscd-secondary)';
+    if (!this.theirs) color = 'var(--oscd-primary)';
+    const style = html`<style>
+      button {
+        color: ${color};
+        top: ${this.depth * 24 + 60}px;
+      }
+      @media (max-width: 599px) {
+        button {
+          top: ${this.depth * 24 + 52}px;
+        }
+      }
+    </style>`;
     let desc = element.getAttribute('desc') || '';
     if (desc) desc = `: ${desc}`;
     if (id !== element.tagName) desc = `${element.tagName}${desc}`;
 
     return html`<button
-        style="${style}"
         @click=${() => {
           this.expanded = !this.expanded;
         }}
@@ -236,12 +245,7 @@ export class DiffTree extends LitElement {
         <md-icon>${this.expanded ? 'arrow_drop_down' : 'arrow_right'}</md-icon>
         ${id} <small>${desc}</small>
       </button>
-      ${this.expanded ? this.renderDiff() : ''}
-      <style>
-        :host {
-          z-index: ${zIndex};
-        }
-      </style>`;
+      ${this.expanded ? this.renderDiff() : ''} ${style}`;
   }
 
   static styles = css`
@@ -254,8 +258,7 @@ export class DiffTree extends LitElement {
       color: var(--oscd-base1);
     }
     md-icon {
-      position: relative;
-      top: 6px;
+      height: 20px;
     }
     div {
       margin-left: 1em;
@@ -263,6 +266,9 @@ export class DiffTree extends LitElement {
     }
     th {
       font-weight: 300;
+    }
+    tr:focus {
+      outline: none;
     }
     td {
       font-weight: 400;
@@ -278,48 +284,73 @@ export class DiffTree extends LitElement {
     }
     table td:nth-child(3) {
       text-align: right;
-      color: var(--oscd-error);
-      padding-left: 1em;
-    }
-    td:nth-child(4) {
-      text-align: left;
       color: var(--oscd-primary);
       padding-left: 1em;
     }
     td:nth-child(4) {
       text-align: left;
-      color: var(--oscd-primary);
+      color: var(--oscd-secondary);
+      padding-left: 1em;
+    }
+    td:nth-child(4) {
+      text-align: left;
+      color: var(--oscd-secondary);
     }
     span {
       display: block;
       transition: max-height 0.5s ease-in-out;
     }
     tr:not(:focus) span {
-      max-height: 60px;
+      max-height: 20px;
       overflow: hidden;
     }
     tr:not(:focus):hover span {
-      max-height: 120px;
+      max-height: 60px;
     }
-    tr:focus {
-      outline: 2px solid var(--oscd-secondary);
-      outline-offset: -2px;
+    tr {
+      background: var(--tr-bg);
+      color: var(--tr-fg);
+      vertical-align: top;
     }
-    tr:nth-child(2n) td,
-    tr:nth-child(2n) th {
-      background: var(--oscd-base3);
+    tr:nth-child(2n) {
+      --tr-bg: var(--oscd-base3);
+      --tr-fg: var(--oscd-base0);
+      --tr-fg-alt: var(--oscd-base1);
     }
-    tr:nth-child(2n + 1) td,
-    tr:nth-child(2n + 1) th {
-      background: var(--oscd-base2);
+    tr:nth-child(2n + 1) {
+      --tr-bg: var(--oscd-base2);
+      --tr-fg: var(--oscd-base00);
+      --tr-fg-alt: var(--oscd-base0);
     }
-    :host([odd]) tr:nth-child(2n) td,
-    :host([odd]) tr:nth-child(2n) th {
-      background: var(--oscd-base2);
+    :host([odd]) tr:nth-child(2n) {
+      --tr-bg: var(--oscd-base2);
+      --tr-fg: var(--oscd-base00);
+      --tr-fg-alt: var(--oscd-base0);
     }
-    :host([odd]) tr:nth-child(2n + 1) td,
-    :host([odd]) tr:nth-child(2n + 1) th {
-      background: var(--oscd-base3);
+    :host([odd]) tr:nth-child(2n + 1) {
+      --tr-bg: var(--oscd-base3);
+      --tr-fg: var(--oscd-base0);
+      --tr-fg-alt: var(--oscd-base1);
+    }
+    tr:focus:nth-child(2n) {
+      --tr-bg: var(--oscd-base03);
+      --tr-fg: var(--oscd-base00);
+      --tr-fg-alt: var(--oscd-base01);
+    }
+    tr:focus:nth-child(2n + 1) {
+      --tr-bg: var(--oscd-base02);
+      --tr-fg: var(--oscd-base0);
+      --tr-fg-alt: var(--oscd-base00);
+    }
+    :host([odd]) tr:focus:nth-child(2n) {
+      --tr-bg: var(--oscd-base02);
+      --tr-fg: var(--oscd-base0);
+      --tr-fg-alt: var(--oscd-base00);
+    }
+    :host([odd]) tr:focus:nth-child(2n + 1) {
+      --tr-bg: var(--oscd-base03);
+      --tr-fg: var(--oscd-base00);
+      --tr-fg-alt: var(--oscd-base01);
     }
     table {
       border: 0.25em solid var(--oscd-base3);
@@ -351,7 +382,6 @@ export class DiffTree extends LitElement {
     :host {
       font-family: var(--oscd-text-font);
       display: block;
-      position: relative;
       background: var(--oscd-base2);
       color: var(--oscd-base01);
     }
@@ -367,19 +397,18 @@ export class DiffTree extends LitElement {
     }
     button {
       display: block;
-      text-decoration: none;
-      position: sticky;
       background: var(--oscd-base2);
       width: 100%;
       border: none;
       margin: 0;
       padding: 0;
-      padding-bottom: 4px;
       border-radius: 0;
       text-align: inherit;
       font: inherit;
-      color: inherit;
       appearance: none;
+    }
+    :host([expanded]) button {
+      position: sticky;
     }
     :host([odd]) button {
       background: var(--oscd-base3);
