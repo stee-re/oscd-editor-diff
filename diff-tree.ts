@@ -1,10 +1,11 @@
 import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property, query } from 'lit/decorators.js';
+import { customElement, property, query, state } from 'lit/decorators.js';
 import { identity } from '@openenergytools/scl-lib';
 
-import '@material/web/all.js';
-
+import { Description } from './hash.js';
 import type { newHasher } from './hash.js';
+import { getDisplayIcon } from './icons.js';
+import { getFcdaInstDesc } from './util.js';
 
 function filterObject(
   obj: object,
@@ -13,31 +14,33 @@ function filterObject(
   return Object.fromEntries(Object.entries(obj).filter(predicate));
 }
 
-type Description = Record<string, string | string[]> & {
-  eNS?: Record<string, Record<string, string>>;
-};
-
 function getDiff(ours: Description, theirs: Description) {
   const diff: Record<string, { ours?: any; theirs?: any }> = {};
 
   const keys = new Set([...Object.keys(ours), ...Object.keys(theirs)]);
 
   keys.forEach(key => {
-    if (ours[key] === theirs[key]) return;
+    if (ours[key] === theirs[key]) {
+      return;
+    }
     const val = ours[key] ?? theirs[key];
-    if (typeof val !== 'object')
+
+    if (typeof val !== 'object') {
       diff[key] = { ours: ours[key], theirs: theirs[key] };
-    else if (Array.isArray(val)) {
+    } else if (Array.isArray(val)) {
       const arrayDiff = { ours: [] as string[], theirs: [] as string[] };
       const vals = new Set([...(ours[key] ?? []), ...(theirs[key] ?? [])]);
       vals.forEach(v => {
         const inOurs = ours[key]?.includes(v);
         const inTheirs = theirs[key]?.includes(v);
-        if (inOurs && inTheirs) return;
+        if (inOurs && inTheirs) {
+          return;
+        }
         arrayDiff[inOurs ? 'ours' : 'theirs'].push(v);
       });
-      if (arrayDiff.ours.length || arrayDiff.theirs.length)
+      if (arrayDiff.ours.length || arrayDiff.theirs.length) {
         diff[key] = arrayDiff;
+      }
     } else if (key === 'eNS') {
       const eNSDiff: Record<
         string,
@@ -53,7 +56,9 @@ function getDiff(ours: Description, theirs: Description) {
           ...Object.keys(theirs.eNS?.[ns] ?? {}),
         ]);
         ks.forEach(k => {
-          if (ours.eNS?.[ns]?.[k] === theirs.eNS?.[ns]?.[k]) return;
+          if (ours.eNS?.[ns]?.[k] === theirs.eNS?.[ns]?.[k]) {
+            return;
+          }
           eNSDiff[ns] ??= {};
           eNSDiff[ns][k] = {
             ours: ours.eNS?.[ns]?.[k],
@@ -61,12 +66,15 @@ function getDiff(ours: Description, theirs: Description) {
           };
         });
       });
-      if (Object.keys(eNSDiff).length) diff[key] = eNSDiff;
-    } else
+      if (Object.keys(eNSDiff).length) {
+        diff[key] = eNSDiff;
+      }
+    } else {
       diff[key] = {
         ours: 'undiffable data type',
         theirs: 'undiffable data type',
       };
+    }
   });
 
   return diff;
@@ -78,10 +86,9 @@ export class DiffTree extends LitElement {
 
   @property() theirs?: Element;
 
-  @property() hashers = new WeakMap<
-    XMLDocument,
-    ReturnType<typeof newHasher>
-  >();
+  @property() ourHasher?: ReturnType<typeof newHasher>;
+
+  @property() theirHasher?: ReturnType<typeof newHasher>;
 
   @property({ type: Number }) depth = 0;
 
@@ -90,50 +97,90 @@ export class DiffTree extends LitElement {
     return this.depth % 2 === 0;
   }
 
-  @query('md-icon-button') expandButton!: HTMLElement;
+  #expanded = false;
 
   @property({ type: Boolean, reflect: true })
-  expanded = false;
-
-  get ourHasher(): ReturnType<typeof newHasher> | undefined {
-    return this.ours ? this.hashers.get(this.ours.ownerDocument) : undefined;
+  get expanded(): boolean {
+    return this.#expanded;
   }
 
-  get theirHasher(): ReturnType<typeof newHasher> | undefined {
-    return this.theirs
-      ? this.hashers.get(this.theirs.ownerDocument)
-      : undefined;
+  set expanded(value: boolean) {
+    this.#expanded = value;
+    this.everExpanded = this.everExpanded || value;
   }
+
+  @state()
+  everExpanded = false;
+
+  @property({ type: Boolean })
+  fullscreen = false;
+
+  @state()
+  childrenExpanded: boolean[] = [];
+
+  get allChildrenExpanded(): boolean {
+    return (
+      this.childrenExpanded.length > 0 && this.childrenExpanded.every(e => e)
+    );
+  }
+
+  @query('md-icon-button') expandButton!: HTMLElement;
 
   get ourHash(): string | undefined {
-    return this.ourHasher?.hash(this.ours!);
+    return this.ours && this.ourHasher?.hash(this.ours);
   }
 
   get theirHash(): string | undefined {
-    return this.theirHasher?.hash(this.theirs!);
+    return this.theirs && this.theirHasher?.hash(this.theirs);
   }
 
   get ourDescription(): Description | undefined {
-    return this.ourHasher?.db[this.ours!.tagName][this.ourHash ?? ''] as
-      | Description
-      | undefined;
+    return (
+      this.ours &&
+      (this.ourHasher?.db[this.ours.tagName][this.ourHash ?? ''] as
+        | Description
+        | undefined)
+    );
   }
 
   get theirDescription(): Description | undefined {
-    return this.theirHasher?.db[this.theirs!.tagName][this.theirHash ?? ''] as
-      | Description
-      | undefined;
+    return (
+      this.theirs &&
+      (this.theirHasher?.db[this.theirs.tagName][this.theirHash ?? ''] as
+        | Description
+        | undefined)
+    );
   }
 
   get diff(): Record<string, { ours?: any; theirs?: any }> {
     return getDiff(this.ourDescription ?? {}, this.theirDescription ?? {});
   }
 
+  get childCount(): number {
+    return Object.keys(this.diff)
+      .filter(key => key.startsWith('@'))
+      .map(key =>
+        Math.max(this.diff[key].ours.length, this.diff[key].theirs.length),
+      )
+      .reduce((a, b) => a + b, 0);
+  }
+
+  firstUpdated() {
+    if (this.childCount === 1) {
+      this.childrenExpanded = [true];
+    }
+    this.childrenExpanded = new Array(this.childCount).fill(false);
+  }
+
   renderChildDiffs() {
-    if (!this.expanded) return nothing;
-    return html`<div>
+    if (!this.everExpanded) {
+      return nothing;
+    }
+    return html`<div id="child-diffs">
       ${Object.entries(this.diff).map(([key, { ours, theirs }]) => {
-        if (!key.startsWith('@')) return nothing;
+        if (!key.startsWith('@')) {
+          return nothing;
+        }
         const tag = key.slice(1);
         const elementDiff: Record<
           string,
@@ -143,7 +190,9 @@ export class DiffTree extends LitElement {
           const element = Array.from(
             this.ourHasher?.eDb.h2e.get(digest)?.values() ?? [],
           ).find(e => e.tagName === tag);
-          if (!element) return;
+          if (!element) {
+            return;
+          }
           const id = identity(element as Element);
           elementDiff[id] ??= {};
           elementDiff[id].ours = element;
@@ -152,19 +201,28 @@ export class DiffTree extends LitElement {
           const element = Array.from(
             this.theirHasher?.eDb.h2e.get(digest)?.values() ?? [],
           ).find(e => e.tagName === tag);
-          if (!element) return;
+          if (!element) {
+            return;
+          }
           const id = identity(element as Element);
           elementDiff[id] ??= {};
           elementDiff[id].theirs = element;
         });
-        const expanded = Object.keys(elementDiff).length === 1;
+        const expanded = this.childCount <= 1;
         return Object.values(elementDiff).map(
-          ({ ours: o, theirs: t }) =>
+          ({ ours: o, theirs: t }, i: number) =>
             html`<diff-tree
               .ours=${o}
               .theirs=${t}
-              .hashers=${this.hashers}
-              .expanded=${expanded}
+              .ourHasher=${this.ourHasher}
+              .theirHasher=${this.theirHasher}
+              @diff-toggle=${(event: CustomEvent<{ expanded: boolean }>) => {
+                event.stopPropagation();
+                this.childrenExpanded[i] = event.detail.expanded;
+                this.requestUpdate();
+              }}
+              ?expanded=${expanded}
+              ?fullscreen=${this.fullscreen}
               .depth=${this.depth + 1}
             ></diff-tree>`,
         );
@@ -178,7 +236,9 @@ export class DiffTree extends LitElement {
       ([key]) => !key.startsWith('@') && key !== 'eNS',
     );
     const eNSDiff = this.diff.eNS;
-    if (!Object.keys(attrDiff).length && !eNSDiff) return nothing;
+    if (!Object.keys(attrDiff).length && !eNSDiff) {
+      return nothing;
+    }
     return html`<table>
       ${Object.entries(attrDiff).map(
         ([name, { ours, theirs }]) =>
@@ -212,40 +272,99 @@ export class DiffTree extends LitElement {
   }
 
   render() {
-    if (this.ourHash === this.theirHash) return nothing;
+    if (this.ourHash === this.theirHash) {
+      return nothing;
+    }
 
     const element = this.ours ?? this.theirs;
-    if (!element) return nothing;
-    const id = (<string>(identity(element) || element.tagName))
-      .split('>')
-      .pop();
+    if (!element) {
+      return nothing;
+    }
+    const id = this.depth
+      ? (<string>(identity(element) || element.tagName)).split('>').pop()
+      : identity(element) || element.tagName;
     let color = 'inherit';
-    if (!this.ours) color = 'var(--oscd-secondary)';
-    if (!this.theirs) color = 'var(--oscd-primary)';
+    if (!this.ours) {
+      color = 'var(--oscd-secondary, darkgreen)';
+    }
+    if (!this.theirs) {
+      color = 'var(--oscd-primary, darkred)';
+    }
+    const fullscreenStyles = this.fullscreen
+      ? css`
+          top: ${this.depth * 24}px;
+          z-index: ${10000 - this.depth};
+          position: sticky;
+        `
+      : nothing;
     const style = html`<style>
       button {
         color: ${color};
-        top: ${this.depth * 24 + 60}px;
-      }
-      @media (max-width: 599px) {
-        button {
-          top: ${this.depth * 24 + 52}px;
-        }
+        ${fullscreenStyles}
       }
     </style>`;
     let desc = element.getAttribute('desc') || '';
-    if (desc) desc = `: ${desc}`;
-    if (id !== element.tagName) desc = `${element.tagName}${desc}`;
+    if (element.tagName === 'FCDA') {
+      const { LDevice, LN, DOI, SDI, DAI } = getFcdaInstDesc(
+        element as Element,
+      );
+      desc = [LDevice, LN, DOI, ...(SDI ?? []), DAI].filter(Boolean).join(' ');
+    }
+    if (desc) {
+      desc = `: ${desc}`;
+    }
+    if (id !== element.tagName) {
+      desc = `${element.tagName}${desc}`;
+    }
 
-    return html`<button
-        @click=${() => {
-          this.expanded = !this.expanded;
-        }}
-      >
-        <md-icon>${this.expanded ? 'arrow_drop_down' : 'arrow_right'}</md-icon>
-        ${id} <small>${desc}</small>
-      </button>
-      ${this.expanded ? this.renderDiff() : ''} ${style}`;
+    return html`<div class="header-row">
+        <button
+          @click=${() => {
+            this.expanded = !this.expanded;
+            this.dispatchEvent(
+              new CustomEvent('diff-toggle', {
+                bubbles: true,
+                composed: true,
+                detail: { expanded: this.expanded },
+              }),
+            );
+          }}
+        >
+          <md-icon
+            >${this.expanded ? 'arrow_drop_down' : 'arrow_right'}</md-icon
+          >
+          <md-icon class="display">${getDisplayIcon(element)}</md-icon>
+          ${id} <small>${desc}</small>
+        </button>
+        ${this.childCount > 1
+          ? html`
+          <md-icon-button ?selected=${this.allChildrenExpanded} toggle id="expand-all-btn" @click=${async () => {
+            this.expanded = true;
+            this.dispatchEvent(
+              new CustomEvent('diff-toggle', {
+                bubbles: true,
+                composed: true,
+                detail: { expanded: true },
+              }),
+            );
+            await this.updateComplete;
+            this.shadowRoot
+              ?.querySelectorAll<DiffTree>('diff-tree')
+              .forEach((dt: DiffTree) => {
+                // eslint-disable-next-line no-param-reassign
+                dt.expanded = !this.allChildrenExpanded;
+              });
+            this.childrenExpanded = this.childrenExpanded.fill(
+              !this.allChildrenExpanded,
+            );
+          }}><md-icon slot="selected">collapse_all</md-icon><md-icon>expand_all</md-icon></md-icon-button
+          ></md-icon-button>
+        `
+          : nothing}
+      </div>
+      <div class="content-row">
+        ${this.everExpanded ? this.renderDiff() : ''} ${style}
+      </div> `;
   }
 
   static styles = css`
@@ -257,10 +376,34 @@ export class DiffTree extends LitElement {
     :host([odd]) small {
       color: var(--oscd-base1);
     }
+
+    :host .header-row {
+      display: flex;
+    }
+
+    #expand-all-btn {
+      --md-icon-button-icon-size: 16px;
+      height: 24px;
+      width: 24px;
+      margin: 4px 8px;
+    }
+
+    @media print {
+      #expand-all-btn {
+        display: none;
+      }
+    }
+
     md-icon {
       height: 20px;
     }
-    div {
+    md-icon.display {
+      --md-icon-size: 20px;
+      position: relative;
+      top: 3px;
+      left: -3px;
+    }
+    #child-diffs {
       margin-left: 1em;
       margin-right: 1em;
     }
@@ -284,17 +427,13 @@ export class DiffTree extends LitElement {
     }
     table td:nth-child(3) {
       text-align: right;
-      color: var(--oscd-primary);
+      color: var(--oscd-primary, darkred);
       padding-left: 1em;
     }
     td:nth-child(4) {
       text-align: left;
-      color: var(--oscd-secondary);
+      color: var(--oscd-secondary, darkgreen);
       padding-left: 1em;
-    }
-    td:nth-child(4) {
-      text-align: left;
-      color: var(--oscd-secondary);
     }
     span {
       display: block;
@@ -395,11 +534,11 @@ export class DiffTree extends LitElement {
       font: inherit;
       appearance: none;
     }
-    :host([expanded]) button {
-      position: sticky;
-    }
     :host([odd]) button {
       background: var(--oscd-base3);
+    }
+    :host(:not([expanded])) .content-row {
+      display: none;
     }
   `;
 }

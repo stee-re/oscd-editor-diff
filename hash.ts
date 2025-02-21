@@ -6,6 +6,9 @@ const xxh = await xxhash();
 export type HashDB = Record<string, Record<string, object>>;
 export type IdentityDB = Record<string, string | number>;
 export type Hasher = (e: Element) => string;
+export type Description = Record<string, string | string[]> & {
+  eNS?: Record<string, Record<string, string>>;
+};
 
 const xmlTruths = new Set(['true', '1']);
 function isXmlTrue(val: string | null): boolean {
@@ -15,17 +18,25 @@ function isXmlTrue(val: string | null): boolean {
 /** Get count from referenced sibling element */
 function siblingCount(element: Element, name: string): number {
   const parent = element.parentElement;
-  if (!parent) return NaN;
+  if (!parent) {
+    return NaN;
+  }
 
   const sibling = Array.from(parent.children).find(
     child => child.getAttribute('name') === name,
   );
-  if (!sibling) return NaN;
+  if (!sibling) {
+    return NaN;
+  }
 
   const count = sibling.getAttribute('count');
-  if (!count) return NaN;
+  if (!count) {
+    return NaN;
+  }
 
-  if (!/^\d+$/.test(count)) return NaN;
+  if (!/^\d+$/.test(count)) {
+    return NaN;
+  }
 
   return parseInt(count, 10);
 }
@@ -39,16 +50,16 @@ const identifiers: Record<string, string[]> = {
   DAI: ['name', 'ix'],
   SMV: ['ldInst', 'cbName'],
   LNode: ['iedName', 'ldInst', 'prefix', 'lnClass', 'lnInst', 'lnType'],
-  /* FCDA: [
-    "ldInst",
-    "prefix",
-    "lnClass",
-    "lnInst",
-    "doName",
-    "daName",
-    "fc",
-    "ix",
-    ], */
+  FCDA: [
+    'ldInst',
+    'prefix',
+    'lnClass',
+    'lnInst',
+    'doName',
+    'daName',
+    'fc',
+    'ix',
+  ],
   ConnectedAP: ['iedName', 'apName'],
   ExtRef: [
     'iedName',
@@ -671,61 +682,159 @@ const defaults: Record<string, Record<string, string>> = {
   },
 };
 
+export type Configurable = {
+  inclusive: boolean;
+  vals: string[];
+  except: string[];
+};
+export type HasherOptions = {
+  selectors: Configurable;
+  attributes: Configurable;
+  namespaces: Configurable;
+};
+
 export function hasher(
   db: HashDB,
   eDb: ElementDB,
-  {
-    ignoreAttrs = new Set([
-      'desc',
-      'id',
-      'name',
-      'DO.type',
-      'DA.type',
-      'BDA.type',
-      'inst',
-      'lnType',
-    ]),
-    hashENS,
-  }: { ignoreAttrs?: Set<string>; hashENS?: string[] } = {},
-): (e: Element) => string {
+  { selectors, attributes, namespaces }: HasherOptions = {
+    selectors: { inclusive: false, vals: [], except: [] },
+    attributes: { inclusive: false, vals: [], except: [] },
+    namespaces: { inclusive: false, vals: [], except: [] },
+  },
+): Hasher {
   function describeAttributes(e: Element) {
-    const description: Record<string, string | number | boolean> = {};
+    const description: Description = {};
 
-    Array.from(e.attributes)
+    const includedAttributes = Array.from(e.attributes).filter(a => {
+      const ns = a.namespaceURI ?? '';
+      const name = ns ? `${ns}:${a.localName}` : a.localName;
+      const tagAndName = `${e.tagName}.${name}`;
+
+      if (
+        namespaces.inclusive &&
+        (!namespaces.vals.includes(ns) || namespaces.except.includes(ns))
+      ) {
+        return false;
+      }
+      if (
+        !namespaces.inclusive &&
+        namespaces.vals.includes(ns) &&
+        !namespaces.except.includes(ns)
+      ) {
+        return false;
+      }
+
+      const attrInVals =
+        attributes.vals.includes(name) || attributes.vals.includes(tagAndName);
+      const attrInExcept =
+        attributes.except.includes(name) ||
+        attributes.except.includes(tagAndName);
+
+      if (attributes.inclusive && (!attrInVals || attrInExcept)) {
+        return false;
+      }
+      if (!attributes.inclusive && attrInVals && !attrInExcept) {
+        return false;
+      }
+
+      return true;
+    });
+
+    includedAttributes
+      .filter(a => !a.namespaceURI)
       .map(a => a.localName)
-      .filter(a => !ignoreAttrs.has(a))
-      .filter(a => !ignoreAttrs.has(`${e.tagName}.${a}`))
-      .filter(
-        a => !((e.tagName in identifiers && a in identifiers[e.tagName]) ?? []),
-      )
+      .filter(a => !(e.tagName in identifiers && a in identifiers[e.tagName]))
       .sort()
       .forEach(name => {
-        if (e.tagName in defaults && name in defaults[e.tagName])
+        if (e.tagName in defaults && name in defaults[e.tagName]) {
           description[name] = defaults[e.tagName][name];
+        }
         const val = e.getAttribute(name);
-        if (!val) return;
+        if (!val) {
+          return;
+        }
         description[name] = val.trim();
       });
+
+    const includedNamespaces = new Set(
+      includedAttributes.map(a => a.namespaceURI),
+    );
+    includedNamespaces.delete(null);
+
+    if (includedNamespaces.size) {
+      description.eNS = {};
+    }
+
+    includedNamespaces.forEach(ns => {
+      const nsAttrs = includedAttributes.filter(a => a.namespaceURI === ns);
+      const nsDescription: Record<string, string> = {};
+      nsAttrs
+        .map(a => a.localName)
+        .sort()
+        .forEach(name => {
+          const val = e.getAttributeNS(ns, name);
+          if (val) {
+            nsDescription[name] = val.trim();
+          }
+        });
+      description.eNS![ns!] = nsDescription;
+    });
 
     return description;
   }
 
   function describeChildren(e: Element, ...tags: string[]) {
     const description: Record<string, string[]> = {};
-    const children = Array.from(e.children);
+
+    const includedChildren = Array.from(e.children).filter(c => {
+      if (
+        selectors.inclusive &&
+        (!selectors.vals.some(sel => c.matches(sel)) ||
+          selectors.except.some(sel => c.matches(sel)))
+      ) {
+        return false;
+      }
+      if (
+        !selectors.inclusive &&
+        selectors.vals.some(sel => c.matches(sel)) &&
+        !selectors.except.some(sel => c.matches(sel))
+      ) {
+        return false;
+      }
+      if (
+        (namespaces.inclusive &&
+          !namespaces.vals.includes(c.namespaceURI ?? '')) ||
+        namespaces.except.includes(c.namespaceURI ?? '')
+      ) {
+        return false;
+      }
+      if (
+        !namespaces.inclusive &&
+        namespaces.vals.includes(c.namespaceURI ?? '') &&
+        !namespaces.except.includes(c.namespaceURI ?? '')
+      ) {
+        return false;
+      }
+      return true;
+    });
+
     tags.forEach(tag => {
-      const hashes = children
+      const hashes = includedChildren
         .filter(c => c.tagName === tag)
         .map(hash)
         .sort();
-      if (hashes.length) description[`@${tag}`] = hashes;
+      if (hashes.length) {
+        description[`@${tag}`] = hashes;
+      }
     });
     return description;
   }
 
   function describeReferences(e: Element) {
     const description: Record<string, string[]> = {};
-    if (!(e.tagName in references)) return description;
+    if (!(e.tagName in references)) {
+      return description;
+    }
 
     references[e.tagName].forEach(({ fields, to, scope }) => {
       const candidates = Array.from(
@@ -741,9 +850,23 @@ export function hasher(
         })
         .map(hash)
         .sort();
-      if (hashes.length) description[`@${to.split('>').pop()}`] = hashes;
+      if (hashes.length) {
+        description[`@${to.split('>').pop()}`] = hashes;
+      }
     });
 
+    return description;
+  }
+
+  function describeTextContent(e: Element) {
+    const description: Record<string, string> = {};
+    if (e.children.length > 0) {
+      return description;
+    }
+    const textContent = e.textContent?.trim();
+    if (textContent) {
+      description['>'] = textContent;
+    }
     return description;
   }
 
@@ -755,24 +878,8 @@ export function hasher(
       ...describeAttributes(e),
       ...describeChildren(e, ...childTags),
       ...describeReferences(e),
+      ...describeTextContent(e),
     };
-    const eNSAttrs = Array.from(e.attributes).filter(a => a.namespaceURI);
-    if (eNSAttrs.length) {
-      const eNS = {} as Record<string, Record<string, string>>;
-      eNSAttrs
-        .sort((a, b) => a.localName.localeCompare(b.localName))
-        .sort((a, b) => a.namespaceURI!.localeCompare(b.namespaceURI!))
-        .forEach(attr => {
-          if (hashENS && !hashENS.includes(attr.namespaceURI!)) return;
-          if (!(attr.namespaceURI! in eNS)) eNS[attr.namespaceURI!] = {};
-          eNS[attr.namespaceURI!][attr.localName] = attr.value;
-        });
-      description.eNS = eNS;
-    }
-    if (!ignoreAttrs.has('desc')) {
-      const desc = e.getAttribute('desc');
-      if (desc) description.desc = desc;
-    }
     return description;
   }
 
@@ -793,81 +900,57 @@ export function hasher(
       'count',
     ].map(attr => e.getAttribute(attr));
 
-    if (sAddr) description.sAddr = sAddr;
+    if (sAddr) {
+      description.sAddr = sAddr;
+    }
 
-    if (valKind && ['Spec', 'Conf', 'RO', 'Set'].includes(valKind))
+    if (valKind && ['Spec', 'Conf', 'RO', 'Set'].includes(valKind)) {
       description.valKind = valKind as 'Spec' | 'RO' | 'Conf' | 'Set';
+    }
 
-    if (isXmlTrue(valImport)) description.valImport = true;
+    if (isXmlTrue(valImport)) {
+      description.valImport = true;
+    }
 
-    if (count && /^\d+$/.test(count) && !Number.isNaN(parseInt(count, 10)))
+    if (count && /^\d+$/.test(count) && !Number.isNaN(parseInt(count, 10))) {
       // count can be an unsigned integer
       description.count = parseInt(count, 10);
-    else if (count && !Number.isNaN(siblingCount(e, count)))
+    } else if (count && !Number.isNaN(siblingCount(e, count))) {
       // count can be a reference to another sibling that has integer definition
       description.count = siblingCount(e, count);
+    }
 
     const referencedType = Array.from(
       e.closest('DataTypeTemplates')?.children ?? [],
     ).find(child => child.getAttribute('id') === type);
-    if (referencedType)
+    if (referencedType) {
       description[`@${referencedType.tagName}`] = [hash(referencedType)];
+    }
 
     return description;
   }
 
   const descriptions: Record<string, (e: Element) => object> = {
-    AccessPoint: describeNaming,
     BDA: describeBDA,
     DA: describeBDA,
-    DataTypeTemplates: describeNaming,
-    DAType: describeNaming,
     DO: e => {
       const template = Array.from(
         e.closest('DataTypeTemplates')?.children ?? [],
       ).find(child => child.getAttribute('id') === e.getAttribute('type'));
       return {
-        ...describeAttributes(e),
         ...describeNaming(e),
         [`@${template?.tagName}`]: template ? [hash(template)] : [],
       };
     },
-    DOType: e => ({
-      ...describeNaming(e),
-    }),
-    EnumType: e => describeNaming(e),
     EnumVal: e => ({
       ...describeNaming(e),
       val: e.textContent ?? '',
-    }),
-    IED: e => describeNaming(e),
-    LDevice: describeNaming,
-    /* LN0: (e) => ({
-      ...describeAttributes(e),
-      ["@LNodeType"]: Array.from(
-        e.ownerDocument.querySelectorAll(
-          `DataTypeTemplates > LNodeType[id="${e.getAttribute("lnType")}"]`,
-        ),
-      ).map(hash),
-    }), */
-    /* LN: (e) => ({
-      ...describeAttributes(e),
-      ["@LNodeType"]: Array.from(
-        e.ownerDocument.querySelectorAll(
-          `DataTypeTemplates > LNodeType[id="${e.getAttribute("lnType")}"]`,
-        ),
-      ).map(hash),
-    }), */
-    LNodeType: e => ({
-      ...describeNaming(e),
     }),
     ProtNs: e => ({
       // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       type: e.getAttribute('type') || '8-MMS',
       val: e.textContent ?? '',
     }),
-    Server: describeNaming,
-    Services: describeNaming,
     Val: e =>
       ({
         val: e.textContent ?? '',
@@ -878,36 +961,60 @@ export function hasher(
   };
 
   function describe(e: Element) {
-    if (e.tagName in descriptions) return descriptions[e.tagName](e);
-    if (e.tagName === 'Private') return { xml: e.outerHTML };
-    if (e.tagName === 'Text') return { xml: e.outerHTML };
-    if (e.namespaceURI === 'http://www.iec.ch/61850/2003/SCL')
+    if (e.tagName in descriptions) {
+      return descriptions[e.tagName](e);
+    }
+    if (e.tagName === 'Private') {
+      return { xml: e.outerHTML };
+    }
+    if (e.tagName === 'Text') {
+      return { xml: e.outerHTML };
+    }
+    if (e.namespaceURI === 'http://www.iec.ch/61850/2003/SCL') {
       return describeNaming(e);
+    }
     return { xml: e.outerHTML };
   }
 
   function hash(e: Element): string {
-    if (eDb.e2h.has(e)) return eDb.e2h.get(e)!;
+    if (eDb.e2h.has(e)) {
+      return eDb.e2h.get(e)!;
+    }
     const tag =
       e.namespaceURI === e.ownerDocument.documentElement.namespaceURI
         ? e.localName
         : `${e.localName}@${e.namespaceURI}`;
     const description = describe(e);
     const digest = xxh.h64ToString(JSON.stringify(description));
-    // eslint-disable-next-line no-param-reassign
-    if (!(tag in db)) db[tag] = {};
-    // eslint-disable-next-line no-param-reassign
-    if (!(digest in db[tag])) db[tag][digest] = description;
-    if (!eDb.h2e.has(digest)) eDb.h2e.set(digest, new Set<Element>().add(e));
-    else if (!eDb.h2e.get(digest)!.has(e)) eDb.h2e.get(digest)!.add(e);
-    if (!eDb.e2h.has(e)) eDb.e2h.set(e, digest);
+    if (!(tag in db)) {
+      // eslint-disable-next-line no-param-reassign
+      db[tag] = {};
+    }
+    if (!(digest in db[tag])) {
+      // eslint-disable-next-line no-param-reassign
+      db[tag][digest] = description;
+    }
+    if (!eDb.h2e.has(digest)) {
+      eDb.h2e.set(digest, new Set<Element>().add(e));
+    } else if (!eDb.h2e.get(digest)!.has(e)) {
+      eDb.h2e.get(digest)!.add(e);
+    }
+    if (!eDb.e2h.has(e)) {
+      eDb.e2h.set(e, digest);
+    }
     return digest;
   }
 
   return hash;
 }
 
-export function newHasher(options = {}): {
+export function newHasher(
+  options: HasherOptions = {
+    selectors: { inclusive: false, vals: [], except: [] },
+    attributes: { inclusive: false, vals: [], except: [] },
+    namespaces: { inclusive: false, vals: [], except: [] },
+  },
+): {
   hash: Hasher;
   db: HashDB;
   eDb: ElementDB;

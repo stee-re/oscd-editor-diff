@@ -47,6 +47,7 @@
     "prettier": "^3.3.2",
     "rimraf": "^5.0.9",
     "rollup": "^4.18.1",
+    "rollup-plugin-copy": "^3.5.0",
     "rollup-plugin-esbuild": "^6.1.1",
     "rollup-plugin-workbox": "^8.1.0",
     "tslib": "^2.6.3",
@@ -63,9 +64,7 @@
     ],
     "rules": {
       "no-unused-vars": "off",
-      "@typescript-eslint/no-unused-vars": [
-        "error"
-      ],
+      "@typescript-eslint/no-unused-vars": "error",
       "import/no-unresolved": "off",
       "import/extensions": [
         "error",
@@ -74,13 +73,17 @@
           "ignorePackages": true
         }
       ],
-      "import/no-extraneous-dependencies":[
+      "import/no-extraneous-dependencies": [
         "error",
         {
-          "devDependencies":[
+          "devDependencies": [
             "**/*.test.ts"
           ]
         }
+      ],
+      "curly": [
+        "error",
+        "all"
       ]
     }
   },
