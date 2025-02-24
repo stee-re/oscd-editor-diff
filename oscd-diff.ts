@@ -603,7 +603,7 @@ export default class OscdDiff extends LitElement {
       <div
         id="diff-container"
         @fullscreenchange=${() => this.requestUpdate()}
-        class="${this.fullscreen ? 'fullscreen' : nothing}"
+        .class=${this.fullscreen ? 'fullscreen' : nothing}
       >
         <style>
           @media print {
