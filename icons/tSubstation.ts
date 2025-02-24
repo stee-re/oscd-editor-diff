@@ -534,7 +534,9 @@ export function createIcon(element: Element): string | TemplateResult<2> {
     ) {
       type = 'ESW';
     }
-    if (type) return iconFromPath(equipmentPaths[type]);
+    if (type) {
+      return iconFromPath(equipmentPaths[type]);
+    }
     return defaultEquipmentPath;
   }
 

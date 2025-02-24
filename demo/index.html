@@ -1,51 +1,60 @@
 <title>oscd-designer demo</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300&family=Roboto:wght@300;400;500&display=swap">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Material+Symbols+Outlined&display=block">
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300&family=Roboto:wght@300;400;500&display=swap"
+/>
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css?family=Material+Symbols+Outlined&display=block"
+/>
 <open-scd></open-scd>
 
 <script type="module">
-// eslint-disable-next-line import/no-unresolved
-import 'https://ca-d.github.io/open-scd-core/open-scd.js';
+  // eslint-disable-next-line import/no-unresolved
+  import 'https://ca-d.github.io/open-scd-core/open-scd.js';
 
-const editor = document.querySelector('open-scd');
+  const editor = document.querySelector('open-scd');
 
-const plugins = await fetch('plugins.json')
-  .then((res) => res.json())
+  const plugins = await fetch('plugins.json').then(res => res.json());
 
-const params = (new URL(document.location)).searchParams;
-for (const [name, value] of params) {
-  editor.setAttribute(name, value);
-}
+  const params = new URL(document.location).searchParams;
+  for (const [name, value] of params) {
+    editor.setAttribute(name, value);
+  }
 
-editor.plugins = plugins;
+  editor.plugins = plugins;
 
-const sample = await fetch('sample.scd').then(r => r.text())
-const sample2 = await fetch('sample2.scd').then(r => r.text())
-editor.docs['sample.scd'] =
-  new DOMParser().parseFromString(sample, 'application/xml');
-editor.docs['sample2.scd'] =
-  new DOMParser().parseFromString(sample2, 'application/xml');
-editor.docName = 'sample.scd';
+  const sample = await fetch('sample.scd').then(r => r.text());
+  const sample2 = await fetch('sample2.scd').then(r => r.text());
+  editor.docs['sample.scd'] = new DOMParser().parseFromString(
+    sample,
+    'application/xml',
+  );
+  editor.docs['sample2.scd'] = new DOMParser().parseFromString(
+    sample2,
+    'application/xml',
+  );
+  editor.docName = 'sample.scd';
 </script>
 
 <script>
-const _customElementsDefine = window.customElements.define;
-window.customElements.define = (name, cl, conf) => {
-  if (!customElements.get(name)) {
-    _customElementsDefine.call(window.customElements, name, cl, conf);
-  }
-};
+  const _customElementsDefine = window.customElements.define;
+  window.customElements.define = (name, cl, conf) => {
+    if (!customElements.get(name)) {
+      _customElementsDefine.call(window.customElements, name, cl, conf);
+    }
+  };
 </script>
 
 <style>
   * {
     --oscd-theme-text-font: 'Roboto';
-    --oscd-theme-icon-font: "Material Symbols Outlined";
-  
+    --oscd-theme-icon-font: 'Material Symbols Outlined';
+
     margin: 0px;
     padding: 0px;
   }
-  
+
   abbr {
     text-decoration: none;
     border-bottom: none;
