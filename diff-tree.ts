@@ -291,18 +291,20 @@ export class DiffTree extends LitElement {
       color = 'var(--oscd-primary, darkred)';
     }
     const fullscreenStyles = this.fullscreen
-      ? css`
-          top: ${this.depth * 24}px;
-          z-index: ${10000 - this.depth};
-          position: sticky;
-        `
+      ? html`<style>
+          button {
+            top: ${this.depth * 24}px;
+            z-index: ${10000 - this.depth};
+            position: sticky;
+          }
+        </style>`
       : nothing;
     const style = html`<style>
-      button {
-        color: ${color};
-        ${fullscreenStyles}
-      }
-    </style>`;
+        button {
+          color: ${color};
+        }
+      </style>
+      ${fullscreenStyles}`;
     let desc = element.getAttribute('desc') || '';
     if (element.tagName === 'FCDA') {
       const { LDevice, LN, DOI, SDI, DAI } = getFcdaInstDesc(
