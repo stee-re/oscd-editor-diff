@@ -7,7 +7,12 @@ import { identity } from '@openenergytools/scl-lib';
 import '@material/web/all.js';
 import type { MdFilledSelect, MdMenu } from '@material/web/all.js';
 
-import { Configurable, HasherOptions, newHasher } from './hash.js';
+import {
+  Configurable,
+  createHashElementPredicate,
+  HasherOptions,
+  newHasher,
+} from './hash.js';
 
 import './diff-tree.js';
 import './filter-dialog.js';
@@ -532,8 +537,12 @@ export default class OscdDiff extends LitElement {
                     { ours?: Element; theirs?: Element }
                   > = {};
 
-                  this.docs[this.docName1]
-                    ?.querySelectorAll(this.selector1)
+                  const shouldDiffElement = createHashElementPredicate(options);
+
+                  Array.from(
+                    this.docs[this.docName1]?.querySelectorAll(this.selector1),
+                  )
+                    .filter(shouldDiffElement)
                     .forEach(el => {
                       const id = identity(el);
                       if (!elements[id]) {
@@ -542,8 +551,10 @@ export default class OscdDiff extends LitElement {
                       elements[id].ours = el;
                     });
 
-                  this.docs[this.docName2]
-                    ?.querySelectorAll(this.selector2)
+                  Array.from(
+                    this.docs[this.docName2]?.querySelectorAll(this.selector2),
+                  )
+                    .filter(shouldDiffElement)
                     .forEach(el => {
                       const id = identity(el);
                       if (!elements[id]) {

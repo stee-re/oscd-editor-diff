@@ -10,6 +10,43 @@ export type Description = Record<string, string | string[]> & {
   eNS?: Record<string, Record<string, string>>;
 };
 
+export function createHashElementPredicate({
+  selectors,
+  namespaces,
+}: Pick<HasherOptions, 'selectors' | 'namespaces'>) {
+  return (element: Element) => {
+    if (
+      selectors.inclusive &&
+      (!selectors.vals.some(sel => element.matches(sel)) ||
+        selectors.except.some(sel => element.matches(sel)))
+    ) {
+      return false;
+    }
+    if (
+      !selectors.inclusive &&
+      selectors.vals.some(sel => element.matches(sel)) &&
+      !selectors.except.some(sel => element.matches(sel))
+    ) {
+      return false;
+    }
+    if (
+      (namespaces.inclusive &&
+        !namespaces.vals.includes(element.namespaceURI ?? '')) ||
+      namespaces.except.includes(element.namespaceURI ?? '')
+    ) {
+      return false;
+    }
+    if (
+      !namespaces.inclusive &&
+      namespaces.vals.includes(element.namespaceURI ?? '') &&
+      !namespaces.except.includes(element.namespaceURI ?? '')
+    ) {
+      return false;
+    }
+    return true;
+  };
+}
+
 const xmlTruths = new Set(['true', '1']);
 function isXmlTrue(val: string | null): boolean {
   return val !== null && xmlTruths.has(val.trim());
@@ -702,6 +739,11 @@ export function hasher(
     namespaces: { inclusive: false, vals: [], except: [] },
   },
 ): Hasher {
+  const shouldHashElement = createHashElementPredicate({
+    selectors,
+    namespaces,
+  });
+
   function describeAttributes(e: Element) {
     const description: Description = {};
 
@@ -783,50 +825,23 @@ export function hasher(
     return description;
   }
 
-  function describeChildren(e: Element, ...tags: string[]) {
+  function describeChildren(e: Element) {
     const description: Record<string, string[]> = {};
 
-    const includedChildren = Array.from(e.children).filter(c => {
-      if (
-        selectors.inclusive &&
-        (!selectors.vals.some(sel => c.matches(sel)) ||
-          selectors.except.some(sel => c.matches(sel)))
-      ) {
-        return false;
-      }
-      if (
-        !selectors.inclusive &&
-        selectors.vals.some(sel => c.matches(sel)) &&
-        !selectors.except.some(sel => c.matches(sel))
-      ) {
-        return false;
-      }
-      if (
-        (namespaces.inclusive &&
-          !namespaces.vals.includes(c.namespaceURI ?? '')) ||
-        namespaces.except.includes(c.namespaceURI ?? '')
-      ) {
-        return false;
-      }
-      if (
-        !namespaces.inclusive &&
-        namespaces.vals.includes(c.namespaceURI ?? '') &&
-        !namespaces.except.includes(c.namespaceURI ?? '')
-      ) {
-        return false;
-      }
-      return true;
-    });
+    const includedChildren = Array.from(e.children).filter(shouldHashElement);
 
-    tags.forEach(tag => {
-      const hashes = includedChildren
-        .filter(c => c.tagName === tag)
-        .map(hash)
-        .sort();
-      if (hashes.length) {
-        description[`@${tag}`] = hashes;
-      }
-    });
+    Array.from(e.children)
+      .map(c => c.tagName)
+      .filter((c, i, arr) => arr.indexOf(c) === i)
+      .forEach(tag => {
+        const hashes = includedChildren
+          .filter(c => c.tagName === tag)
+          .map(hash)
+          .sort();
+        if (hashes.length) {
+          description[`@${tag}`] = hashes;
+        }
+      });
     return description;
   }
 
@@ -870,13 +885,10 @@ export function hasher(
     return description;
   }
 
-  function describeNaming(e: Element) {
-    const childTags = Array.from(e.children)
-      .map(c => c.tagName)
-      .filter((c, i, arr) => arr.indexOf(c) === i);
+  function describeElement(e: Element) {
     const description: Record<string, unknown> = {
       ...describeAttributes(e),
-      ...describeChildren(e, ...childTags),
+      ...describeChildren(e),
       ...describeReferences(e),
       ...describeTextContent(e),
     };
@@ -885,7 +897,7 @@ export function hasher(
 
   function describeBDA(e: Element) {
     const description: Record<string, unknown> = {
-      ...describeNaming(e),
+      ...describeElement(e),
       bType: e.getAttribute('bType'),
       valKind: 'Set',
       valImport: false,
@@ -938,12 +950,12 @@ export function hasher(
         e.closest('DataTypeTemplates')?.children ?? [],
       ).find(child => child.getAttribute('id') === e.getAttribute('type'));
       return {
-        ...describeNaming(e),
+        ...describeElement(e),
         [`@${template?.tagName}`]: template ? [hash(template)] : [],
       };
     },
     EnumVal: e => ({
-      ...describeNaming(e),
+      ...describeElement(e),
       val: e.textContent ?? '',
     }),
     ProtNs: e => ({
@@ -971,7 +983,7 @@ export function hasher(
       return { xml: e.outerHTML };
     }
     if (e.namespaceURI === 'http://www.iec.ch/61850/2003/SCL') {
-      return describeNaming(e);
+      return describeElement(e);
     }
     return { xml: e.outerHTML };
   }
