@@ -10,6 +10,37 @@ export type Description = Record<string, string | string[]> & {
   eNS?: Record<string, Record<string, string>>;
 };
 
+const referenceLookups: Record<string, (e: Element) => Element[]> = {};
+
+export function findReferences(element: Element): Element[] {
+  const referencedElements = [] as Element[];
+
+  if (element.tagName in referenceLookups) {
+    return referenceLookups[element.tagName](element);
+  }
+
+  if (!(element.tagName in references)) {
+    return [];
+  }
+
+  references[element.tagName].forEach(({ fields, to, scope }) => {
+    const candidates = Array.from(
+      element.closest(scope)?.querySelectorAll(to) ?? [],
+    );
+    referencedElements.push(
+      ...candidates.filter(toE => {
+        const toAttrs = fields.map(f => f.to);
+        const fromAttrs = fields.map(f => f.from);
+        const toVals = toAttrs.map(a => toE.getAttribute(a));
+        const fromVals = fromAttrs.map(a => element.getAttribute(a));
+        return fromVals.every((val, i) => toVals[i] === val) && toE;
+      }),
+    );
+  });
+
+  return referencedElements;
+}
+
 export function createHashElementPredicate({
   selectors,
   namespaces,
@@ -121,6 +152,7 @@ const identifiers: Record<string, string[]> = {
   ClientLN: ['apRef', 'iedName', 'ldInst', 'prefix', 'lnClass', 'lnInst'],
   KDC: ['iedName', 'apName'],
   LN: ['prefix', 'lnClass', 'inst'],
+  AccessPoint: ['name'],
 };
 
 interface Reference {
@@ -847,6 +879,17 @@ export function hasher(
       return description;
     }
 
+    findReferences(e)
+      .filter(shouldHashElement)
+      .forEach(element => {
+        const tag = element.tagName;
+        if (!(tag in description)) {
+          description[tag] = [];
+        }
+        description[tag].push(hash(element));
+        description[tag].sort();
+      });
+
     references[e.tagName].forEach(({ fields, to, scope }) => {
       const candidates = Array.from(
         e.closest(scope)?.querySelectorAll(to) ?? [],
@@ -922,9 +965,44 @@ export function hasher(
     return description;
   }
 
+  function findAPServer(e: Element): Element | undefined {
+    let server = e.querySelector(':scope>ServerAt, :scope>Server') ?? undefined;
+    let apName = server?.getAttribute('apName');
+    while (server && server.tagName !== 'Server') {
+      if (!shouldHashElement(server)) {
+        return undefined;
+      }
+      server =
+        server
+          .closest('IED')
+          ?.querySelector(
+            `:scope>AccessPoint[name="${apName}"]>Server, :scope>AccessPoint[name="${apName}"]>ServerAt`,
+          ) ?? undefined;
+      apName = server?.getAttribute('apName');
+    }
+    if (server && !shouldHashElement(server)) {
+      return undefined;
+    }
+    return server;
+  }
+
+  function describeAccessPoint(e: Element) {
+    const description = {
+      ...describeAttributes(e),
+      ...describeChildren(e),
+    } as Description;
+    const server = findAPServer(e);
+    if (server) {
+      description['@Server'] = [hash(server)];
+      delete description['@ServerAt'];
+    }
+    return description;
+  }
+
   const descriptions: Record<string, (e: Element) => object> = {
     BDA: describeBDA,
     DA: describeBDA,
+    AccessPoint: describeAccessPoint,
     DataSet: describeDataSet,
   };
 
