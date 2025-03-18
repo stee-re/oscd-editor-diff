@@ -6,10 +6,10 @@ export const DefaultInfoDialogContent = `
 </p>
 <p>
   Users may compare only particular elements and specify these in considerable
-  detail. Comparisons can occur between one or more documents. Pre-defined
+  detail. Comparisons can occur within a document or between two documents. Pre-defined
   comparison rules are available for common use cases and users may create new
   comparison rules as well as export and import rules to allow them to be shared
-  (the rules are saved as JSON files)
+  (the rules are saved as JSON files).
 </p>
 <p>
   Comparisons on large files may take a considerable time - 10-15 minutes on a
@@ -35,7 +35,7 @@ export const DefaultInfoDialogContent = `
 </p>
 <h2 id="quick-start">Quick Start</h2>
 <p>
-  At the top top, a set of predefined comparison rules for common tasks are
+  At the top, a set of predefined comparison rules for common tasks are
   provided. Click the three dots on the right to duplicate/delete or to
   import/export the filters.
 </p>
@@ -50,7 +50,7 @@ export const DefaultInfoDialogContent = `
   changes are in the second document colour it indicates additions.
 </p>
 <p>
-  Finally the &quot;Scope&quot; can be entered. On a predefined filters these
+  Finally the &quot;Scope&quot; can be entered. On predefined filters these
   can usually be left blank or at the filter defaults. By ticking the checkbox
   &quot;Separate From/To scopes&quot; the user can specify different scopes for
   the "From" and "To" documents.
