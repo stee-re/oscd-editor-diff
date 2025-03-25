@@ -222,7 +222,6 @@ export class DiffTree extends LitElement {
           elementDiff[id] ??= {};
           elementDiff[id].theirElement = element;
         });
-        const expanded = this.childCount <= 1;
         return Object.values(elementDiff).map(
           ({ ourElement: o, theirElement: t }, i: number) =>
             html`<diff-tree
@@ -235,7 +234,7 @@ export class DiffTree extends LitElement {
                 this.childrenExpanded[i] = event.detail.expanded;
                 this.requestUpdate();
               }}
-              ?expanded=${expanded}
+              ?expanded=${this.childCount <= 1 || this.childrenExpanded[i]}
               ?fullscreen=${this.fullscreen}
               .depth=${this.depth + 1}
             ></diff-tree>`,
