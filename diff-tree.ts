@@ -355,7 +355,6 @@ export class DiffTree extends LitElement {
               @diff-toggle=${(event: CustomEvent<{ expanded: boolean }>) => {
                 event.stopPropagation();
                 this.childrenExpanded[i] = event.detail.expanded;
-                this.requestUpdate();
               }}
               ?expanded=${this.childCount <= 1 || this.childrenExpanded[i]}
               ?fullscreen=${this.fullscreen}
