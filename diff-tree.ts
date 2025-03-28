@@ -312,6 +312,7 @@ export class DiffTree extends LitElement {
           string,
           { ourElement?: Element; theirElement?: Element }
         > = {};
+
         ours.forEach((digest: string) => {
           const element = [
             ...Array.from(this.ours?.children ?? []),
@@ -324,10 +325,20 @@ export class DiffTree extends LitElement {
           if (!element) {
             return;
           }
-          const id = identity(element as Element);
+          let id = identity(element as Element);
+          const parentId = identity(element.parentElement!);
+          if (
+            parentId &&
+            typeof parentId === 'string' &&
+            typeof id === 'string' &&
+            id.startsWith(parentId)
+          ) {
+            id = id.slice(parentId.length).trim();
+          }
           elementDiff[id] ??= {};
           elementDiff[id].ourElement = element;
         });
+
         theirs.forEach((digest: string) => {
           const element = [
             ...Array.from(this.theirs?.children ?? []),
@@ -341,10 +352,20 @@ export class DiffTree extends LitElement {
           if (!element) {
             return;
           }
-          const id = identity(element as Element);
+          let id = identity(element as Element);
+          const parentId = identity(element.parentElement!);
+          if (
+            parentId &&
+            typeof parentId === 'string' &&
+            typeof id === 'string' &&
+            id.startsWith(parentId)
+          ) {
+            id = id.slice(parentId.length).trim();
+          }
           elementDiff[id] ??= {};
           elementDiff[id].theirElement = element;
         });
+
         return Object.values(elementDiff).map(
           ({ ourElement: o, theirElement: t }, i: number) =>
             html`<diff-tree
