@@ -65,7 +65,7 @@ function getDiff(ours: Description, theirs: Description) {
       diff[key] = { ours: ours[key], theirs: theirs[key] };
     } else if (Array.isArray(val)) {
       const arrayDiff = { ours: [] as string[], theirs: [] as string[] };
-      const vals = new Set([...(ours[key] ?? []), ...(theirs[key] ?? [])]);
+      const vals = [...(ours[key] ?? []), ...(theirs[key] ?? [])];
       vals.forEach(v => {
         const inOurs = ours[key]?.includes(v);
         const inTheirs = theirs[key]?.includes(v);
@@ -320,7 +320,12 @@ export class DiffTree extends LitElement {
               ? this.ourHasher.findReferences(this.ours)
               : []),
           ].find(
-            e => e.tagName === tag && this.ourHasher?.eDb.e2h.get(e) === digest,
+            e =>
+              e.tagName === tag &&
+              this.ourHasher?.eDb.e2h.get(e) === digest &&
+              Object.values(elementDiff).every(
+                ({ ourElement }) => ourElement !== e,
+              ),
           );
           if (!element) {
             return;
@@ -347,7 +352,11 @@ export class DiffTree extends LitElement {
               : []),
           ].find(
             e =>
-              e.tagName === tag && this.theirHasher?.eDb.e2h.get(e) === digest,
+              e.tagName === tag &&
+              this.theirHasher?.eDb.e2h.get(e) === digest &&
+              Object.values(elementDiff).every(
+                ({ theirElement }) => theirElement !== e,
+              ),
           );
           if (!element) {
             return;
